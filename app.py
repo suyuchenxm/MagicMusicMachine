@@ -4,6 +4,8 @@ import gradio as gr
 
 from gradio_components.image import generate_caption, improve_prompt
 from gradio_components.prediction import predict, transcribe
+import argparse
+
 
 theme = gr.themes.Glass(
     primary_hue="fuchsia",
@@ -187,7 +189,7 @@ def post_submit(show_caption, model_path, image_input):
     )
 
 
-def UI():
+def UI(share=False):
     with gr.Blocks() as demo:
         with gr.Tab("Generate Music by melody"):
             with gr.Row():
@@ -522,8 +524,13 @@ def UI():
                 # cache_examples=True,
             )
 
-    demo.queue().launch()
+    demo.queue().launch(share)
 
 
 if __name__ == "__main__":
-    UI()
+    # Create the parser
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--share', action='store_true', help='Enable sharing.')
+    args = parser.parse_args()
+
+    UI(share=args.share)
