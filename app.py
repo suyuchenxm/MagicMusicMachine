@@ -524,7 +524,7 @@ def UI(share=False):
                 # cache_examples=True,
             )
 
-    demo.queue().launch(share)
+    demo.queue().launch(share=share)
 
 
 if __name__ == "__main__":
