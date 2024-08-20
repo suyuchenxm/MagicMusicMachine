@@ -8,77 +8,146 @@ import gradio as gr
 import torch
 from audiocraft.data.audio import audio_write
 from audiocraft.data.audio_utils import convert_audio
-from audiocraft.models import AudioGen, MusicGen
+# from audiocraft.models import AudioGen, MusicGen
 from basic_pitch import ICASSP_2022_MODEL_PATH
-from transformers import AutoModelForSeq2SeqLM
+# from transformers import AutoModelForSeq2SeqLM
+from gradio_components.model_cards import load_model
+from concurrent.futures import ProcessPoolExecutor
+import warnings
 
 
-def load_model(version="facebook/musicgen-melody"):
-    if version in ["facebook/audiogen-medium"]:
-        return AudioGen.get_pretrained(version)
-    else:
-        return MusicGen.get_pretrained(version)
+pool = ProcessPoolExecutor(4)
+class FileCleaner:
+    def __init__(self, file_lifetime: float = 3600):
+        self.file_lifetime = file_lifetime
+        self.files = []
 
+    def add(self, path: tp.Union[str, Path]):
+        self._cleanup()
+        self.files.append((time.time(), Path(path)))
+
+    def _cleanup(self):
+        now = time.time()
+        for time_added, path in list(self.files):
+            if now - time_added > self.file_lifetime:
+                if path.exists():
+                    path.unlink()
+                self.files.pop(0)
+            else:
+                break
+                
+file_cleaner = FileCleaner()
+
+def inference_musicgen_text_to_music(model, configs, text, num_outputs=1):
+    model.set_generation_params(
+        **configs
+    )
+    descriptions = [text for _ in range(num_outputs)]
+    output = model.generate(descriptions=descriptions ,progress=True, return_tokens=True)
+    return output
+
+def inference_musicgen_continuation(model, configs, text, prompt_waveform, prompt_sr, num_outputs=1):
+    model.set_generation_params(
+        **configs
+    )
+    descriptions = [text for _ in range(num_outputs)]
+    prompt = [prompt_waveform for _ in range(num_outputs)]
+    output = model.generate_continuation(prompt, prompt_sample_rate=prompt_sr, descriptions=descriptions, progress=True, return_tokens=True)
+    return output
+
+def inference_musicgen_melody_condition(model, configs, text, prompt_waveform, prompt_sr, num_outputs=1):
+    model.set_generation_params(**configs)
+    melody_waveform = [prompt_waveform for _ in range(num_outputs)]
+    descriptions = [text for _ in range(num_outputs)]
+    output = model.generate_with_chroma(
+        descriptions=descriptions,
+        melody_wavs=melody_waveform,
+        melody_sample_rate=prompt_sr,
+        progress=True, 
+        return_tokens=True
+    )
+    return output
+
+def inference_magnet(model, configs, text, num_outputs=1):
+    model.set_generation_params(
+        **configs
+    )
+    descriptions = [text for _ in range(num_outputs)]
+    output = model.generate(descriptions=descriptions, progress=True, return_tokens=True)
+    return output
+
+def inference_magnet_audio(model, configs, text, num_outputs=1):
+    model.set_generation_params(
+        **configs
+    )
+    descriptions = [text for _ in range(num_outputs)]
+    output = model.generate(descriptions=descriptions, progress=True, return_tokens=True)
+    return output
+    
+def inference_audiogen(model, configs, text, num_outputs=1):
+    model.set_generation_params(
+        **configs
+    )
+    descriptions = [text for _ in range(num_outputs)]
+    output = model.generate(descriptions=descriptions, progress=True, return_tokens=True)
+    return output
+
+def inference_musiclang():
+    # TODO: Implement MusicLang
+    pass
+
+
+def process_audio(gr_audio, model):
+    audio, sr = torch.from_numpy(gr_audio[1]).to(model.device).float().t(), gr_audio[0]
+    return audio, sr
+
+_MODEL_INFERENCES = {
+    "facebook/musicgen-melody": inference_musicgen_melody_condition,
+    "facebook/musicgen-medium": inference_musicgen_text_to_music,
+    "facebook/musicgen-small": inference_musicgen_text_to_music,
+    "facebook/musicgen-large": inference_musicgen_text_to_music,
+    "facebook/musicgen-melody-large": inference_musicgen_melody_condition,
+    "facebook/magnet-small-10secs": inference_magnet,
+    "facebook/magnet-medium-10secs": inference_magnet,
+    "facebook/magnet-small-30secs": inference_magnet,
+    "facebook/magnet-medium-30secs": inference_magnet,
+    "facebook/audio-magnet-small": inference_magnet_audio,
+    "facebook/audio-magnet-medium": inference_magnet_audio,
+    "facebook/audiogen-medium": inference_audiogen,
+    "musicgen-continuation": inference_musicgen_continuation,
+}
 
 def _do_predictions(
     model_file,
     model,
-    texts,
-    melodies,
-    duration,
+    text,
+    melody = None,
+    mel_sample_rate=None,
     progress=False,
-    gradio_progress=None,
-    target_sr=32000,
-    target_ac=1,
+    num_generations=1,
     **gen_kwargs,
 ):
     print(
-        "new batch",
-        len(texts),
-        texts,
-        [None if m is None else (m[0], m[1].shape) for m in melodies],
+        "new generation",
+        text,
+        None if melody is None else melody.shape
     )
     be = time.time()
-    processed_melodies = []
-    model.set_generation_params(duration=duration)
-    for melody in melodies:
-        if melody is None:
-            processed_melodies.append(None)
-        else:
-            sr, melody = (
-                melody[0],
-                torch.from_numpy(melody[1]).to(model.device).float().t(),
-            )
-            print(f"Input audio sample rate is {sr}")
-            if melody.dim() == 1:
-                melody = melody[None]
-            melody = melody[..., : int(sr * duration)]
-            melody = convert_audio(melody, sr, target_sr, target_ac)
-            processed_melodies.append(melody)
-
     try:
-        if any(m is not None for m in processed_melodies):
-            # melody condition
-            outputs = model.generate_with_chroma(
-                descriptions=texts,
-                melody_wavs=processed_melodies,
-                melody_sample_rate=target_sr,
-                progress=progress,
-                return_tokens=False,
-            )
+        if melody is not None:
+            # melody condition or continuation
+            inderence_func = _MODEL_INFERENCES[model_file]
+            outputs = inderence_func(model, gen_kwargs, text, melody, mel_sample_rate, num_generations)
         else:
-            if model_file == "facebook/audiogen-medium":
-                # audio condition
-                outputs = model.generate(texts, progress=progress)
-            else:
-                # text only
-                outputs = model.generate(texts, progress=progress)
+            # text-to-music, text-to-sound
+            inderence_func = _MODEL_INFERENCES[model_file]
+            outputs = inderence_func(model, gen_kwargs, text, num_generations)
 
     except RuntimeError as e:
         raise gr.Error("Error while generating " + e.args[0])
     outputs = outputs.detach().cpu().float()
-    pending_videos = []
-    out_wavs = []
+    out_audios = []
+    video_processes = []
     for output in outputs:
         with NamedTemporaryFile("wb", suffix=".wav", delete=False) as file:
             audio_write(
@@ -90,44 +159,41 @@ def _do_predictions(
                 loudness_compressor=True,
                 add_suffix=False,
             )
-            out_wavs.append(file.name)
-    print("generation finished", len(texts), time.time() - be)
-    return out_wavs
+            video_processes.append(pool.submit(make_waveform, file.name))
+            out_audios.append(file.name)
+            file_cleaner.add(file.name)
+    out_videos = [video.result() for video in video_processes]
+    for video in out_videos:
+        file_cleaner.add(video)
+    
+    print("generation finished", len(outputs), time.time() - be)
+    return out_audios, out_videos
 
-
+def make_waveform(*args, **kwargs):
+    # Further remove some warnings.
+    be = time.time()
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        out = gr.make_waveform(*args, **kwargs)
+        print("Make a video took", time.time() - be)
+        return out
+    
 def predict(
-    model_path,
-    text,
-    melody,
-    duration,
-    topk,
-    topp,
-    temperature,
-    target_sr,
+    model,
+    model_version,
+    generation_configs,
+    prompt_text=None,
+    prompt_wav=None,
     progress=gr.Progress(),
+    num_generations=1,
 ):
     global INTERRUPTING
-    global USE_DIFFUSION
     INTERRUPTING = False
-    progress(0, desc="Loading model...")
-    model_path = model_path.strip()
-    # if model_path:
-    #     if not Path(model_path).exists():
-    #         raise gr.Error(f"Model path {model_path} doesn't exist.")
-    #     if not Path(model_path).is_dir():
-    #         raise gr.Error(f"Model path {model_path} must be a folder containing "
-    #                        "state_dict.bin and compression_state_dict_.bin.")
-    if temperature < 0:
-        raise gr.Error("Temperature must be >= 0.")
-    if topk < 0:
-        raise gr.Error("Topk must be non-negative.")
-    if topp < 0:
-        raise gr.Error("Topp must be non-negative.")
-
-    topk = int(topk)
-    model = load_model(model_path)
-
+    # progress(0, desc="Loading model...")
+    
     max_generated = 0
+
+    melody, mel_sample_rate = process_audio(prompt_wav) if prompt_wav is not None else None
 
     def _progress(generated, to_generate):
         nonlocal max_generated
@@ -138,24 +204,23 @@ def predict(
 
     model.set_custom_progress_callback(_progress)
 
-    wavs = _do_predictions(
-        model_path,
+    audios, waveforms = _do_predictions(
+        model_version,
         model,
-        [text],
-        [melody],
-        duration,
+        prompt_text,
+        melody,
+        mel_sample_rate,
         progress=True,
-        target_ac=1,
-        target_sr=target_sr,
-        top_k=topk,
-        top_p=topp,
-        temperature=temperature,
-        gradio_progress=progress,
+        num_generations = num_generations,
+        **generation_configs,
     )
-    return wavs[0]
+    return audios, waveforms
 
 
 def transcribe(audio_path):
+    """
+    Transcribe an audio file to MIDI using the basic_pitch model.
+    """
     # model_output, midi_data, note_events = predict("generated_0.wav")
     model_output, midi_data, note_events = basic_pitch.inference.predict(
         audio_path=audio_path,
@@ -173,3 +238,5 @@ def transcribe(audio_path):
     return gr.DownloadButton(
         value=file.name, label=f"Download MIDI file {file.name}", visible=True
     )
+
+
