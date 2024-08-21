@@ -17,6 +17,12 @@ TEXT_TO_MIDI_MODELS = [
     "musiclang/musiclang-v2",
 ]
 
+MELODY_CONTINUATION_MODELS = [
+    "facebook/musicgen-medium",
+    "facebook/musicgen-small",
+    "facebook/musicgen-large",
+]
+
 TEXT_TO_SOUND_MODELS = [
     'facebook/audio-magnet-small', 
     'facebook/audio-magnet-medium',

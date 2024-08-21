@@ -8,13 +8,36 @@ import gradio as gr
 import torch
 from audiocraft.data.audio import audio_write
 from audiocraft.data.audio_utils import convert_audio
-# from audiocraft.models import AudioGen, MusicGen
+from audiocraft.models import AudioGen, MusicGen, MAGNeT
 from basic_pitch import ICASSP_2022_MODEL_PATH
 # from transformers import AutoModelForSeq2SeqLM
-from gradio_components.model_cards import load_model
 from concurrent.futures import ProcessPoolExecutor
+import typing as tp
 import warnings
+import json
+import ast
 
+MODEL = None
+
+def load_model(version='facebook/musicgen-large'):
+    global MODEL
+    if MODEL is None or MODEL.name != version:
+        del MODEL
+        MODEL = None  # in case loading would crash
+    print("Loading model", version)
+    if "magnet" in version:
+        MODEL = MAGNeT.get_pretrained(version)
+    elif "musicgen" in version:
+        MODEL = MusicGen.get_pretrained(version)
+    elif "musiclang" in version:
+        # TODO: Implement MusicLang
+        pass
+    elif "audiogen" in version:
+        MODEL = AudioGen.get_pretrained(version)
+    else:
+        raise ValueError("Invalid model version")
+    
+    return MODEL
 
 pool = ProcessPoolExecutor(4)
 class FileCleaner:
@@ -43,7 +66,7 @@ def inference_musicgen_text_to_music(model, configs, text, num_outputs=1):
         **configs
     )
     descriptions = [text for _ in range(num_outputs)]
-    output = model.generate(descriptions=descriptions ,progress=True, return_tokens=True)
+    output = model.generate(descriptions=descriptions ,progress=True, return_tokens=False)
     return output
 
 def inference_musicgen_continuation(model, configs, text, prompt_waveform, prompt_sr, num_outputs=1):
@@ -52,7 +75,7 @@ def inference_musicgen_continuation(model, configs, text, prompt_waveform, promp
     )
     descriptions = [text for _ in range(num_outputs)]
     prompt = [prompt_waveform for _ in range(num_outputs)]
-    output = model.generate_continuation(prompt, prompt_sample_rate=prompt_sr, descriptions=descriptions, progress=True, return_tokens=True)
+    output = model.generate_continuation(prompt, prompt_sample_rate=prompt_sr, descriptions=descriptions, progress=True, return_tokens=False)
     return output
 
 def inference_musicgen_melody_condition(model, configs, text, prompt_waveform, prompt_sr, num_outputs=1):
@@ -73,7 +96,7 @@ def inference_magnet(model, configs, text, num_outputs=1):
         **configs
     )
     descriptions = [text for _ in range(num_outputs)]
-    output = model.generate(descriptions=descriptions, progress=True, return_tokens=True)
+    output = model.generate(descriptions=descriptions, progress=True, return_tokens=False)
     return output
 
 def inference_magnet_audio(model, configs, text, num_outputs=1):
@@ -81,7 +104,7 @@ def inference_magnet_audio(model, configs, text, num_outputs=1):
         **configs
     )
     descriptions = [text for _ in range(num_outputs)]
-    output = model.generate(descriptions=descriptions, progress=True, return_tokens=True)
+    output = model.generate(descriptions=descriptions, progress=True, return_tokens=False)
     return output
     
 def inference_audiogen(model, configs, text, num_outputs=1):
@@ -89,7 +112,7 @@ def inference_audiogen(model, configs, text, num_outputs=1):
         **configs
     )
     descriptions = [text for _ in range(num_outputs)]
-    output = model.generate(descriptions=descriptions, progress=True, return_tokens=True)
+    output = model.generate(descriptions=descriptions, progress=True, return_tokens=False)
     return output
 
 def inference_musiclang():
@@ -159,15 +182,15 @@ def _do_predictions(
                 loudness_compressor=True,
                 add_suffix=False,
             )
-            video_processes.append(pool.submit(make_waveform, file.name))
+            # video_processes.append(pool.submit(make_waveform, file.name))
             out_audios.append(file.name)
             file_cleaner.add(file.name)
-    out_videos = [video.result() for video in video_processes]
-    for video in out_videos:
-        file_cleaner.add(video)
+    # out_videos = [video.result() for video in video_processes]
+    # for video in out_videos:
+        # file_cleaner.add(video)
     
     print("generation finished", len(outputs), time.time() - be)
-    return out_audios, out_videos
+    return out_audios
 
 def make_waveform(*args, **kwargs):
     # Further remove some warnings.
@@ -179,21 +202,23 @@ def make_waveform(*args, **kwargs):
         return out
     
 def predict(
-    model,
     model_version,
     generation_configs,
     prompt_text=None,
     prompt_wav=None,
-    progress=gr.Progress(),
     num_generations=1,
+    progress=gr.Progress(),
 ):
     global INTERRUPTING
     INTERRUPTING = False
-    # progress(0, desc="Loading model...")
+    progress(0, desc="Loading model...")
     
+    generation_configs = ast.literal_eval(generation_configs)
     max_generated = 0
-
-    melody, mel_sample_rate = process_audio(prompt_wav) if prompt_wav is not None else None
+    if prompt_wav is not None:
+        melody, mel_sample_rate = process_audio(prompt_wav) 
+    else:
+        melody, mel_sample_rate = None, None
 
     def _progress(generated, to_generate):
         nonlocal max_generated
@@ -201,10 +226,10 @@ def predict(
         progress((min(max_generated, to_generate), to_generate))
         if INTERRUPTING:
             raise gr.Error("Interrupted.")
-
+    model = load_model(model_version)
     model.set_custom_progress_callback(_progress)
 
-    audios, waveforms = _do_predictions(
+    audios = _do_predictions(
         model_version,
         model,
         prompt_text,
@@ -214,7 +239,7 @@ def predict(
         num_generations = num_generations,
         **generation_configs,
     )
-    return audios, waveforms
+    return audios
 
 
 def transcribe(audio_path):
