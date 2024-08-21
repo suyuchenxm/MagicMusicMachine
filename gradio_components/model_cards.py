@@ -8,9 +8,9 @@ TEXT_TO_MUSIC_MODELS = [
     'facebook/magnet-medium-10secs',
     'facebook/magnet-small-30secs', 
     'facebook/magnet-medium-30secs',
-    "facebook/musicgen-stereo-small", 
-    "facebook/musicgen-stereo-medium",
-    "facebook/musicgen-stereo-large",
+    # "facebook/musicgen-stereo-small", 
+    # "facebook/musicgen-stereo-medium",
+    # "facebook/musicgen-stereo-large",
 ]
 
 TEXT_TO_MIDI_MODELS = [
@@ -32,8 +32,8 @@ TEXT_TO_SOUND_MODELS = [
 MELODY_CONDITIONED_MODELS = [
     "facebook/musicgen-melody",
     "facebook/musicgen-melody-large",
-    "facebook/musicgen-stereo-melody",
-    "facebook/musicgen-stereo-melody-large",
+    # "facebook/musicgen-stereo-melody",
+    # "facebook/musicgen-stereo-melody-large",
 ]
 
 STEREO_MODEL = [

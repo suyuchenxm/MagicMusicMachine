@@ -4,6 +4,8 @@ import os
 
 import anthropic
 import gradio as gr
+from openai import OpenAI
+
 
 # Remember to put your API Key here
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -20,12 +22,22 @@ The model was trained with descriptions from a stock music catalog, descriptions
 
 Try to make the prompt simple and concise with only 1-2 sentences
 
-Make sure the ouput is in JSON fomat, with two items `description` and `prompt`"""
+only return dictionary, with two items `description` and `prompt`
+
+for example
+{
+  "description": "A serene beach at sunset with gentle waves and a distant ship.",
+  "prompt": "A calming instrumental with gentle guitar, soft piano, and ocean waves sound effects, perfect for a relaxing moment by the sea."
+}
+"""
 
 SYSTEM_PROMPT_AUDIO = """You are an expert llm prompt engineer, you understand the structure of llms and facebook musicgen text to audio model. You will be provided with an image, and require to output a prompt for the musicgen model to capture the essense of the image. Try to do it step by step, evaluate and analyze the image thoroughly. After that, develop a prompt that contains the detail of what background sounds this image should have. This prompt will be provided to audiogen model to generate a 15s audio clip.
 Try to make the prompt simple and concise with only 1-2 sentences
 
-Make sure the ouput is in JSON fomat, with two items `description` and `prompt`
+only return dictionary, with two items `description` and `prompt`
+for example
+{"description": "A serene beach scene at sunset with gentle waves lapping on the shore and a distant ship sailing on the water.",
+ "prompt": "Gentle waves flowing on the beach at sunset, with a distant ship in the background."}
 """
 
 PROMPT_IMPROVEMENT_GENERATE_PROMPT = """
@@ -58,8 +70,39 @@ def improve_prompt(prompt):
     prompt = message_object["prompt"]
     return message_object, prompt
 
+def generate_caption_gpt4(image_file, model_file):
+    client = OpenAI()
+    if model_file == "facebook/audiogen-medium":
+        system_prompt = SYSTEM_PROMPT_AUDIO
+    else:
+        system_prompt = SYSTEM_PROMPT
+    with open(image_file, "rb") as f:
+        image_encoded = base64.b64encode(f.read()).decode("utf-8")
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+            "role": "user",
+            "content": [
+                {"type": "text", 
+                 "text": system_prompt},
+                {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{image_encoded}",
+                },
+                },
+            ],
+            }
+        ],
+        max_tokens=300,
+        )
+    message = json.loads(response.choices[0].message.content)
+    return message['description'], message['prompt']
+    
 
-def generate_caption(image_file, model_file, progress=gr.Progress()):
+
+def generate_caption_claude3(image_file, model_file, progress=gr.Progress()):
     if model_file == "facebook/audiogen-medium":
         system_prompt = SYSTEM_PROMPT_AUDIO
     else:

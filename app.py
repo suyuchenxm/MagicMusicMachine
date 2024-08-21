@@ -3,12 +3,14 @@ import gradio as gr
 from audiocraft.models import MAGNeT, MusicGen, AudioGen
 
 # from gradio_components.image import generate_caption, improve_prompt
+from gradio_components.image import generate_caption_gpt4, generate_caption_claude3
 from gradio_components.prediction import predict, transcribe, load_model
 
 import re
 import argparse
 from gradio_components.model_cards import TEXT_TO_MIDI_MODELS, TEXT_TO_SOUND_MODELS, MELODY_CONTINUATION_MODELS, TEXT_TO_MUSIC_MODELS, MODEL_CARDS, MELODY_CONDITIONED_MODELS
 import ast
+import json
 
 
     
@@ -211,22 +213,15 @@ def UI(share=False):
                         with gr.Accordion("Model Generation Configs"):
                             if "magnet" in model_path:
                                 with gr.Row():
-                                    duration = gr.Slider(
-                                        minimum=10,
-                                        maximum=60,
-                                        value=10,
-                                        label="Duration",
-                                        interactive=True,
-                                    )
                                     top_k = gr.Number(label="Top-k", value=0, interactive=True)
                                     top_p = gr.Number(label="Top-p", value=0.95, interactive=True)
                                     temperature = gr.Number(
                                         label="Temperature", value=1.0, interactive=True
                                     )
                                     span_arrangement = gr.Radio(["nonoverlap", "stride1"], value='nonoverlap', label="span arrangment", info=" Use either non-overlapping spans ('nonoverlap') or overlapping spans ('stride1') ")
-                                @gr.on(inputs=[duration, top_k, top_p, temperature, span_arrangement], outputs=config_output_textbox)
-                                def return_model_configs(duration, top_k, top_p, temperature, span_arrangement):
-                                    return {"duration": duration, "top_k": top_k, "top_p": top_p, "temperature": temperature, "span_arrangement": span_arrangement}
+                                @gr.on(inputs=[top_k, top_p, temperature, span_arrangement], outputs=config_output_textbox)
+                                def return_model_configs(top_k, top_p, temperature, span_arrangement):
+                                    return {"top_k": top_k, "top_p": top_p, "temperature": temperature, "span_arrangement": span_arrangement}
                             else:
                                 with gr.Row():
                                     duration = gr.Slider(
@@ -251,7 +246,7 @@ def UI(share=False):
                         melody = gr.Audio(sources=["upload"], type="numpy", label="File",
                                         interactive=True, elem_id="melody-input", visible=False)
                         submit = gr.Button("Generate Music")
-                    result_text = gr.Textbox(label="Generated Music (text)", type="text", interactive=False, visible=False)
+                    result_text = gr.Textbox(label="Generated Music (text)", type="text", interactive=False)
                     print(result_text)
                     output_audios = []
                     @gr.render(inputs=result_text)
@@ -261,65 +256,50 @@ def UI(share=False):
                             print(tmp_paths)
                             for i in range(len(tmp_paths)):
                                 tmp_path = tmp_paths[i]
-                                _audio = gr.Audio(value=tmp_path , label=f"Generated Music {i}", type='filepath', interactive=False)
+                                _audio = gr.Audio(value=tmp_path , label=f"Generated Music {i}", type='filepath', interactive=False, visible=True)
                                 output_audios.append(_audio)
                 
                     submit.click(
                         fn=predict,
                         inputs=[model_path, config_output_textbox, text_prompt, melody, num_outputs], 
                         outputs=result_text,
-                        queue=False
+                        queue=True
                         )
                 
-                    # with gr.Row():
-                    #     transcribe_button = gr.Button("Transcribe")
-                    #     d = gr.DownloadButton("Download the file", visible=False)
-                    #     transcribe_button.click(
-                    #         transcribe, inputs=output_audios[0], outputs=d
-                    #     )
-
-                # with gr.Column():
-                #     with gr.Row():
-                #         melody = gr.Audio(
-                #             sources=["microphone", "upload"],
-                #             label="Record or upload your audio",
-                #             # interactive=True,
-                #             show_label=True,
-                #         )
-                #     with gr.Row():
-                #         submit = gr.Button("Generate Music")
-                #         output_audio = gr.Audio(
-                #             "listen to the generated music", type="filepath"
-                #         )
-                #     with gr.Row():
-                #         transcribe_button = gr.Button("Transcribe")
-                #         d = gr.DownloadButton("Download the file", visible=False)
-                #         transcribe_button.click(
-                #             transcribe, inputs=[output_audio], outputs=d
-                #         )
-
             
         with gr.Tab("Generate Music by melody"):
             with gr.Column():
                 with gr.Row():
                     radio_melody_condition = gr.Radio(["Muisc Continuation", "Music Generation"], value=None)
-                    @gr.render(inputs=radio_melody_condition)
+                    model_path2 = gr.Dropdown()
+                    @gr.on(inputs=radio_melody_condition, outputs=model_path2)
                     def model_selection(radio_melody_condition):
                         if radio_melody_condition == "Muisc Continuation":
-                            model_path = gr.Dropdown(
+                            model_path2 = gr.Dropdown(
                                 choices=MELODY_CONTINUATION_MODELS,
                                 label="Select the model",
                                 value="facebook/musicgen-small",
                                 interactive=True,
+                                visible=True
                             )
                         elif radio_melody_condition == "Music Generation":
-                            model_path = gr.Dropdown(
+                            model_path2 = gr.Dropdown(
                                 choices=MELODY_CONDITIONED_MODELS,
                                 label="Select the model",
                                 value="facebook/musicgen-melody",
                                 interactive=True,
+                                visible=True
                             )
-                    upload_melody = gr.Audio(sources=["upload", "microphone"], type="numpy", label="File")
+                        else:
+                            model_path2 = gr.Dropdown(
+                                choices=TEXT_TO_SOUND_MODELS,
+                                label="Select the model",
+                                value="facebook/musicgen-small",
+                                interactive=True,
+                                visible=False
+                            )
+                        return model_path2
+                    upload_melody = gr.Audio(sources=["upload", "microphone"], type="filepath", label="File")
                     prompt_text2 = gr.Textbox(
                         label="Let's make a song about ...",
                         value="First day learning music generation in Standford university",
@@ -327,21 +307,28 @@ def UI(share=False):
                         visible=True,
                     )
                 with gr.Row():
-                    config_output_textbox2 = gr.Textbox(label="Model Configs", visible=True)
+                    config_output_textbox2 = gr.Textbox(
+                        value = '{"duration": 10, "use_sampling": True, "top_k": 1, "top_p": 0, "temperature": 10}',
+                        label="Model Configs", 
+                        visible=True)
                     with gr.Row():
                         duration2 = gr.Number(10, label="Duration", interactive=True)
                         num_outputs2 = gr.Number(1, label="Number of outputs", interactive=True)
+
                     @gr.on(inputs=[duration2], outputs=config_output_textbox2)
                     def return_model_configs(duration):
+                        if duration is None:
+                            duration = 10
                         return {"duration": duration, "use_sampling": True, "top_k": 1, "top_p": 0, "temperature": 10}
                     submit2 = gr.Button("Generate Music")
-                    result_text2 = gr.Textbox(label="Generated Music (melody)", type="text", interactive=False, visible=False)
+                    result_text2 = gr.Textbox(label="Generated Music (melody)", type="text", interactive=False, visible=True)
                     submit2.click(
                         fn=predict,
-                        inputs=[model_path, config_output_textbox2, prompt_text2, upload_melody, num_outputs2],
+                        inputs=[model_path2, config_output_textbox2, prompt_text2, upload_melody, num_outputs2],
                         outputs=result_text2,
-                        queue=False
+                        queue=True
                     )
+
                     @gr.render(inputs=result_text2)
                     def show_output_audio(tmp_paths):
                         if tmp_paths:
@@ -352,229 +339,57 @@ def UI(share=False):
                                 _audio = gr.Audio(value=tmp_path , label=f"Generated Music {i}", type='filepath', interactive=False)
                                 output_audios.append(_audio)
 
-            # submit.click(
-            #     fn=predict,
-            #     inputs=[
-            #         model_path,
-            #         prompt,
-            #         melody,
-            #         duration,
-            #         topk,
-            #         topp,
-            #         temperature,
-            #         sample_rate,
-            #     ],
-            #     outputs=output_audio,
-            # )
-            # gr.Examples(
-            #     examples=[
-            #         [
-            #             os.path.join(
-            #                 os.path.dirname(__file__),
-            #                 "./data/audio/twinkle_twinkle_little_stars_mozart_20sec"
-            #                 ".mp3",
-            #             ),
-            #             "Easy",
-            #             32000,
-            #             20,
-            #         ],
-            #         [
-            #             os.path.join(
-            #                 os.path.dirname(__file__),
-            #                 "./data/audio/golden_hour_20sec.mp3",
-            #             ),
-            #             "Easy",
-            #             32000,
-            #             20,
-            #         ],
-            #         [
-            #             os.path.join(
-            #                 os.path.dirname(__file__),
-            #                 "./data/audio/turkish_march_mozart_20sec.mp3",
-            #             ),
-            #             "Easy",
-            #             32000,
-            #             20,
-            #         ],
-            #         [
-            #             os.path.join(
-            #                 os.path.dirname(__file__),
-            #                 "./data/audio/golden_hour_20sec.mp3",
-            #             ),
-            #             "Hard",
-            #             32000,
-            #             20,
-            #         ],
-            #         [
-            #             os.path.join(
-            #                 os.path.dirname(__file__),
-            #                 "./data/audio/golden_hour_20sec.mp3",
-            #             ),
-            #             "Hard",
-            #             32000,
-            #             40,
-            #         ],
-            #         [
-            #             os.path.join(
-            #                 os.path.dirname(__file__),
-            #                 "./data/audio/golden_hour_20sec.mp3",
-            #             ),
-            #             "Hard",
-            #             16000,
-            #             20,
-            #         ],
-            #         [
-            #             os.path.join(
-            #                 os.path.dirname(__file__),
-            #                 "./data/audio/old_town_road20sec.mp3",
-            #                 ),
-            #             "Hard",
-            #             32000,
-            #             40,
-            #             ],
-            #     ],
-            #     inputs=[melody, difficulty, sample_rate, duration],
-            #     label="Audio Examples",
-            #     outputs=[output_audio],
-                # cache_examples=True,
-            # )
-        # with gr.Tab("Generate Music by image"):
-        #     with gr.Row():
-        #         with gr.Column():
-        #             image_input = gr.Image("Upload an image", type="filepath")
-        #             melody_condition = gr.Checkbox(
-        #                 label="Generate music by melody", interactive=True, value=False
-        #             )
-        #             melody = gr.Audio(
-        #                 sources=["microphone", "upload"],
-        #                 label="Record or upload your audio",
-        #                 show_label=True,
-        #                 visible=False,
-        #             )
-        #             melody_condition.change(
-        #                 fn=toggle_melody_condition,
-        #                 inputs=[melody_condition],
-        #                 outputs=melody,
-        #             )
-        #             description = gr.Textbox(
-        #                 label="Image Captioning",
-        #                 show_label=True,
-        #                 interactive=False,
-        #                 visible=False,
-        #             )
-        #             prompt = gr.Textbox(
-        #                 label="Generated Prompt",
-        #                 show_label=True,
-        #                 interactive=True,
-        #                 visible=False,
-        #             )
-        #             show_prompt = gr.Checkbox(label="Show the prompt", interactive=True)
-        #             submit = gr.Button("submit", interactive=True, visible=True)
-        #             generate = gr.Button(
-        #                 "Generate Music", interactive=True, visible=False
-        #             )
+        with gr.Tab("Generate Music by image"):
+            with gr.Column():
+                with gr.Row():
+                    image_input = gr.Image("Upload an image", type="filepath")
+                    with gr.Accordion("Image Captioning", open=False):
+                        image_description = gr.Textbox(label='image description', visible=True, interactive=False)
+                        image_caption = gr.Textbox(label='generated text prompt', visible=True, interactive=True)
+                    @gr.on(inputs=image_input, outputs=[image_description, image_caption])
+                    def generate_image_text_prompt(image_input):
+                        if image_input:
+                            image_description, image_caption = generate_caption_gpt4(image_input, model_path)
+                            # meesage_object, description, prompt = generate_caption_claude3(image_input, model_path)
+                            return image_description, image_caption
+                        return "", ""
+                with gr.Row():
+                    melody3 = gr.Audio(sources=["upload", "microphone"], type="filepath", label="File", visible=True)
+            with gr.Column():
+                model_path3 = gr.Dropdown(
+                    choices=TEXT_TO_SOUND_MODELS + TEXT_TO_MUSIC_MODELS + MELODY_CONDITIONED_MODELS,
+                    label="Select the model",
+                    value="facebook/musicgen-small",
+                )
+                duration3 = gr.Number(30, visible=False)
+                submit3 = gr.Button("Generate Music")
+                result_text3 = gr.Textbox(label="Generated Music (image)", type="text", interactive=False, visible=True)
+                def predict_image_music(model_path3, image_caption, duration3, melody3):
+                    model_configs = {"duration": duration3, "use_sampling": False, "top_k": 1, "top_p": 0, "temperature": 10}
+                    return predict(
+                        model_version = model_path3, 
+                        generation_configs = model_configs, 
+                        prompt_text = image_caption, 
+                        prompt_wav = melody3
+                        )
 
-        #         with gr.Column():
-        #             with gr.Row():
-        #                 model_path = gr.Dropdown(
-        #                     choices=TEXT_TO_MUSIC_MODELS + TEXT_TO_SOUND_MODELS + MELODY_CONDITIONED_MODELS,
-        #                     label="Select the model",
-        #                     value="facebook/musicgen-large",
-        #                 )
-        #             with gr.Row():
-        #                 duration = gr.Slider(
-        #                     minimum=10,
-        #                     maximum=60,
-        #                     value=10,
-        #                     label="Duration",
-        #                     interactive=True,
-        #                 )
-        #             topk = gr.Number(label="Top-k", value=250, interactive=True)
-        #             topp = gr.Number(label="Top-p", value=0, interactive=True)
-        #             temperature = gr.Number(
-        #                 label="Temperature", value=1.0, interactive=True
-        #             )
-        #             sample_rate = gr.Number(
-        #                 label="output music sample rate", value=32000, interactive=True
-        #             )
-        #         with gr.Column():
-        #             output_audio = gr.Audio(
-        #                 "listen to the generated music",
-        #                 type="filepath",
-        #                 show_label=True,
-        #             )
-        #             transcribe_button = gr.Button("Transcribe")
-        #             d = gr.DownloadButton("Download the file", visible=False)
-        #     submit.click(
-        #         fn=post_submit,
-        #         inputs=[show_prompt, model_path, image_input],
-        #         outputs=[description, prompt, generate],
-        #     )
-        #     show_prompt.change(
-        #         fn=show_caption,
-        #         inputs=[show_prompt, description, prompt],
-        #         outputs=[description, prompt, generate],
-        #     )
-        #     transcribe_button.click(transcribe, inputs=[output_audio], outputs=d)
-        #     generate.click(
-        #         fn=predict,
-        #         inputs=[
-        #             model_path,
-        #             prompt,
-        #             melody,
-        #             duration,
-        #             topk,
-        #             topp,
-        #             temperature,
-        #             sample_rate,
-        #         ],
-        #         outputs=output_audio,
-        #     )
+                submit3.click(
+                    fn=predict_image_music,
+                    inputs=[model_path3, image_caption, duration3, melody3],
+                    outputs=result_text3,
+                    queue=True
+                )
 
-        #     gr.Examples(
-        #         examples=[
-        #             [
-        #                 os.path.join(
-        #                     os.path.dirname(__file__),
-        #                     "./data/image/kids_drawing.jpeg",
-        #                 ),
-        #                 False,
-        #                 None,
-        #                 "facebook/musicgen-large",
-        #             ],
-        #             [
-        #                 os.path.join(
-        #                     os.path.dirname(__file__),
-        #                     "./data/image/cat.jpeg",
-        #                 ),
-        #                 False,
-        #                 None,
-        #                 "facebook/musicgen-large",
-        #             ],
-        #             [
-        #                 os.path.join(
-        #                     os.path.dirname(__file__),
-        #                     "./data/image/cat.jpeg",
-        #                 ),
-        #                 True,
-        #                 "./data/audio/the_nutcracker_dance_of_the_reed_flutes.mp3",
-        #                 "facebook/musicgen-melody-large",
-        #             ],
-        #             [
-        #                 os.path.join(
-        #                     os.path.dirname(__file__),
-        #                     "./data/image/beach.jpeg",
-        #                 ),
-        #                 False,
-        #                 None,
-        #                 "facebook/audiogen-medium",
-        #             ],
-        #         ],
-        #         inputs=[image_input, melody_condition, melody, model_path],
-        #         label="Audio Examples",
-        #         outputs=[output_audio],
-        #         # cache_examples=True,
-        #     )
+                @gr.render(inputs=result_text3)
+                def show_output_audio(tmp_paths):
+                    if tmp_paths:
+                        tmp_paths = ast.literal_eval(tmp_paths)
+                        print(tmp_paths)
+                        for i in range(len(tmp_paths)):
+                            tmp_path = tmp_paths[i]
+                            _audio = gr.Audio(value=tmp_path , label=f"Generated Music {i}", type='filepath', interactive=False)
+                            output_audios.append(_audio)
+                    
 
     demo.queue().launch(share=share)
 

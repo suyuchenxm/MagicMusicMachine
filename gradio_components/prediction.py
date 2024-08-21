@@ -16,6 +16,7 @@ import typing as tp
 import warnings
 import json
 import ast
+import torchaudio
 
 MODEL = None
 
@@ -73,18 +74,18 @@ def inference_musicgen_continuation(model, configs, text, prompt_waveform, promp
     model.set_generation_params(
         **configs
     )
-    descriptions = [text for _ in range(num_outputs)]
-    prompt = [prompt_waveform for _ in range(num_outputs)]
-    output = model.generate_continuation(prompt, prompt_sample_rate=prompt_sr, descriptions=descriptions, progress=True, return_tokens=False)
+    # melody, prompt_sr = torchaudio.load(prompt_waveform)
+    # descriptions = [text for _ in range(num_outputs)]
+    # prompt = [prompt_waveform for _ in range(num_outputs)]
+    output = model.generate_continuation(prompt_waveform, prompt_sample_rate=prompt_sr, progress=True, return_tokens=False)
     return output
 
 def inference_musicgen_melody_condition(model, configs, text, prompt_waveform, prompt_sr, num_outputs=1):
     model.set_generation_params(**configs)
-    melody_waveform = [prompt_waveform for _ in range(num_outputs)]
     descriptions = [text for _ in range(num_outputs)]
     output = model.generate_with_chroma(
         descriptions=descriptions,
-        melody_wavs=melody_waveform,
+        melody_wavs=prompt_waveform,
         melody_sample_rate=prompt_sr,
         progress=True, 
         return_tokens=True
@@ -120,15 +121,17 @@ def inference_musiclang():
     pass
 
 
-def process_audio(gr_audio, model):
-    audio, sr = torch.from_numpy(gr_audio[1]).to(model.device).float().t(), gr_audio[0]
+def process_audio(gr_audio, prompt_duration, model):
+    # audio, sr = torch.from_numpy(gr_audio[1]).to(model.device).float().t(), gr_audio[0]
+    audio, sr = torchaudio.load(gr_audio)
+    audio = audio[..., :int(prompt_duration * sr)]
     return audio, sr
 
 _MODEL_INFERENCES = {
-    "facebook/musicgen-melody": inference_musicgen_melody_condition,
-    "facebook/musicgen-medium": inference_musicgen_text_to_music,
     "facebook/musicgen-small": inference_musicgen_text_to_music,
+    "facebook/musicgen-medium": inference_musicgen_text_to_music,
     "facebook/musicgen-large": inference_musicgen_text_to_music,
+    "facebook/musicgen-melody": inference_musicgen_melody_condition,
     "facebook/musicgen-melody-large": inference_musicgen_melody_condition,
     "facebook/magnet-small-10secs": inference_magnet,
     "facebook/magnet-medium-10secs": inference_magnet,
@@ -159,7 +162,12 @@ def _do_predictions(
     try:
         if melody is not None:
             # melody condition or continuation
-            inderence_func = _MODEL_INFERENCES[model_file]
+            if 'melody' in model_file:
+                # melody condition - musicgen-melody, musicgen-melody-large
+                inderence_func = _MODEL_INFERENCES[model_file]
+            else:
+                # melody continuation 
+                inderence_func = _MODEL_INFERENCES['musicgen-continuation']
             outputs = inderence_func(model, gen_kwargs, text, melody, mel_sample_rate, num_generations)
         else:
             # text-to-music, text-to-sound
@@ -212,22 +220,24 @@ def predict(
     global INTERRUPTING
     INTERRUPTING = False
     progress(0, desc="Loading model...")
-    
-    generation_configs = ast.literal_eval(generation_configs)
-    max_generated = 0
-    if prompt_wav is not None:
-        melody, mel_sample_rate = process_audio(prompt_wav) 
-    else:
-        melody, mel_sample_rate = None, None
-
     def _progress(generated, to_generate):
         nonlocal max_generated
         max_generated = max(generated, max_generated)
         progress((min(max_generated, to_generate), to_generate))
         if INTERRUPTING:
             raise gr.Error("Interrupted.")
+
     model = load_model(model_version)
     model.set_custom_progress_callback(_progress)
+    if isinstance(generation_configs, str):
+        generation_configs = ast.literal_eval(generation_configs)
+    max_generated = 0
+    if prompt_wav is not None:
+        melody, mel_sample_rate = process_audio(prompt_wav, generation_configs['duration'], model) 
+    else:
+        melody, mel_sample_rate = None, None
+
+
 
     audios = _do_predictions(
         model_version,
