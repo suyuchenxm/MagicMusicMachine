@@ -88,7 +88,7 @@ def inference_musicgen_melody_condition(model, configs, text, prompt_waveform, p
         melody_wavs=prompt_waveform,
         melody_sample_rate=prompt_sr,
         progress=True, 
-        return_tokens=True
+        return_tokens=False
     )
     return output
 
@@ -257,21 +257,26 @@ def transcribe(audio_path):
     Transcribe an audio file to MIDI using the basic_pitch model.
     """
     # model_output, midi_data, note_events = predict("generated_0.wav")
-    model_output, midi_data, note_events = basic_pitch.inference.predict(
-        audio_path=audio_path,
-        model_or_model_path=ICASSP_2022_MODEL_PATH,
-    )
+    tmp_paths = ast.literal_eval(audio_path)
+    download_buttons = []
+    for audio_path in tmp_paths:
+        model_output, midi_data, note_events = basic_pitch.inference.predict(
+            audio_path=audio_path,
+            model_or_model_path=ICASSP_2022_MODEL_PATH,
+        )
 
-    with NamedTemporaryFile("wb", suffix=".mid", delete=False) as file:
-        try:
-            midi_data.write(file)
-            print(f"midi file saved to {file.name}")
-        except Exception as e:
-            print(f"Error while writing midi file: {e}")
-            raise e
+        with NamedTemporaryFile("wb", suffix=".mid", delete=False) as file:
+            try:
+                midi_data.write(file)
+                print(f"midi file saved to {file.name}")
+            except Exception as e:
+                print(f"Error while writing midi file: {e}")
+                raise e
+        download_buttons.append(gr.DownloadButton(
+            value=file.name, label=f"Download MIDI file {file.name}", visible=True
+        ))
+        file_cleaner.add(file.name)
 
-    return gr.DownloadButton(
-        value=file.name, label=f"Download MIDI file {file.name}", visible=True
-    )
+    return download_buttons
 
 

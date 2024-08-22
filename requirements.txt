@@ -6,3 +6,4 @@ basic-pitch
 gradio
 tensorflow==2.15.0
 anthropic
+openai

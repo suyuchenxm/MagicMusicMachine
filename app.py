@@ -3,8 +3,8 @@ import gradio as gr
 from audiocraft.models import MAGNeT, MusicGen, AudioGen
 
 # from gradio_components.image import generate_caption, improve_prompt
-from gradio_components.image import generate_caption_gpt4, generate_caption_claude3
-from gradio_components.prediction import predict, transcribe, load_model
+from gradio_components.image import generate_caption_gpt4
+from gradio_components.prediction import predict, transcribe
 
 import re
 import argparse
@@ -83,88 +83,6 @@ def generate_prompt(prompt, style):
     return prompt
 
 
-def toggle_custom_prompt(customize, difficulty, style):
-    if customize:
-        return gr.Textbox(label="Type your prompt", interactive=True, visible=True)
-    else:
-        prompt = generate_prompt(difficulty, style)
-        return gr.Textbox(
-            label="Generated Prompt", value=prompt, interactive=False, visible=True
-        )
-
-
-def show_caption(show_caption_condition, description, prompt):
-    if show_caption_condition:
-        return (
-            gr.Textbox(
-                label="Image Caption",
-                value=description,
-                interactive=False,
-                show_label=True,
-                visible=True,
-            ),
-            gr.Textbox(
-                label="Generated Prompt",
-                value=prompt,
-                interactive=True,
-                show_label=True,
-                visible=True,
-            ),
-            gr.Button("Generate Music", interactive=True, visible=True),
-        )
-    else:
-        return (
-            gr.Textbox(
-                label="Image Caption",
-                value=description,
-                interactive=False,
-                show_label=True,
-                visible=False,
-            ),
-            gr.Textbox(
-                label="Generated Prompt",
-                value=prompt,
-                interactive=True,
-                show_label=True,
-                visible=False,
-            ),
-            gr.Button(label="Generate Music", interactive=True, visible=True),
-        )
-
-
-def optimize_fn(prompt):
-    message_object, prompt = improve_prompt(prompt)
-    return prompt
-
-
-def display_prompt(prompt):
-    return gr.Textbox(
-        label="Generated Prompt", value=prompt, interactive=False, visible=True
-    )
-
-
-def post_submit(show_caption, model_path, image_input):
-    _, description, prompt = generate_caption(image_input, model_path)
-    return (
-        gr.Textbox(
-            label="Image Caption",
-            value=description,
-            interactive=False,
-            show_label=True,
-            visible=show_caption,
-        ),
-        gr.Textbox(
-            label="Generated Prompt",
-            value=prompt,
-            interactive=True,
-            show_label=True,
-            visible=show_caption,
-        ),
-        gr.Button("Generate Music", interactive=True, visible=True),
-    )
-
-# MODEL = None
-
 def UI(share=False):
     with gr.Blocks() as demo:
         with gr.Tab("Generate Music by text"):
@@ -174,9 +92,8 @@ def UI(share=False):
                         model_path = gr.Dropdown(
                             choices=TEXT_TO_MUSIC_MODELS,
                             label="Select the model",
-                            value="facebook/musicgen-small",
+                            value="facebook/musicgen-large",
                         )
-                        # MODEL = gr.State(load_model(model_path.value))
 
                     with gr.Row():
                         text_prompt = gr.Textbox(
@@ -270,7 +187,7 @@ def UI(share=False):
         with gr.Tab("Generate Music by melody"):
             with gr.Column():
                 with gr.Row():
-                    radio_melody_condition = gr.Radio(["Muisc Continuation", "Music Generation"], value=None)
+                    radio_melody_condition = gr.Radio(["Muisc Continuation", "Music Conditioning"], value=None)
                     model_path2 = gr.Dropdown()
                     @gr.on(inputs=radio_melody_condition, outputs=model_path2)
                     def model_selection(radio_melody_condition):
@@ -278,15 +195,15 @@ def UI(share=False):
                             model_path2 = gr.Dropdown(
                                 choices=MELODY_CONTINUATION_MODELS,
                                 label="Select the model",
-                                value="facebook/musicgen-small",
+                                value="facebook/musicgen-large",
                                 interactive=True,
                                 visible=True
                             )
-                        elif radio_melody_condition == "Music Generation":
+                        elif radio_melody_condition == "Music Conditioning":
                             model_path2 = gr.Dropdown(
                                 choices=MELODY_CONDITIONED_MODELS,
                                 label="Select the model",
-                                value="facebook/musicgen-melody",
+                                value="facebook/musicgen-melody-large",
                                 interactive=True,
                                 visible=True
                             )
@@ -294,7 +211,7 @@ def UI(share=False):
                             model_path2 = gr.Dropdown(
                                 choices=TEXT_TO_SOUND_MODELS,
                                 label="Select the model",
-                                value="facebook/musicgen-small",
+                                value="facebook/musicgen-large",
                                 interactive=True,
                                 visible=False
                             )
@@ -302,7 +219,7 @@ def UI(share=False):
                     upload_melody = gr.Audio(sources=["upload", "microphone"], type="filepath", label="File")
                     prompt_text2 = gr.Textbox(
                         label="Let's make a song about ...",
-                        value="First day learning music generation in Standford university",
+                        value=None,
                         interactive=True,
                         visible=True,
                     )
@@ -335,6 +252,27 @@ def UI(share=False):
                                 tmp_path = tmp_paths[i]
                                 _audio = gr.Audio(value=tmp_path , label=f"Generated Music {i}", type='filepath', interactive=False)
                                 output_audios.append(_audio)
+            gr.Examples(
+                examples = [
+                    [
+                        os.path.join(
+                            os.path.dirname(__file__), "./data/audio/Suri's Improv.mp3"
+                        ),
+                        30, 
+                        "facebook/musicgen-large",
+                        "Muisc Continuation",
+                    ],
+                    [
+                        os.path.join(
+                            os.path.dirname(__file__), "./data/audio/lie_no_tomorrow_20sec.wav"
+                        ),
+                        40, 
+                        "facebook/musicgen-melody-large",
+                        "Music Conditioning",
+                    ]
+                ],
+                inputs=[upload_melody, duration2, model_path2, radio_melody_condition],
+            )
 
         with gr.Tab("Generate Music by image"):
             with gr.Column():
@@ -356,7 +294,7 @@ def UI(share=False):
                 model_path3 = gr.Dropdown(
                     choices=TEXT_TO_SOUND_MODELS + TEXT_TO_MUSIC_MODELS + MELODY_CONDITIONED_MODELS,
                     label="Select the model",
-                    value="facebook/musicgen-small",
+                    value="facebook/musicgen-large",
                 )
                 duration3 = gr.Number(30, visible=False)
                 submit3 = gr.Button("Generate Music")
@@ -386,7 +324,49 @@ def UI(share=False):
                             tmp_path = tmp_paths[i]
                             _audio = gr.Audio(value=tmp_path , label=f"Generated Music {i}", type='filepath', interactive=False)
                             output_audios.append(_audio)
-                    
+
+                @gr.render(inputs=result_text3)
+                def show_transcribt_audio(tmp_paths):
+                    transcribe(tmp_paths)
+            gr.Examples(
+                examples = [
+                    [
+                        os.path.join(
+                            os.path.dirname(__file__), "./data/image/beach.jpeg"
+                        ),
+                        "facebook/musicgen-large",
+                        30,
+                        None,
+                    ],
+                    [
+                        os.path.join(
+                            os.path.dirname(__file__), "./data/image/beach.jpeg"
+                        ),
+                        "facebook/audiogen-medium",
+                        15,
+                        None,
+                    ],
+                    [
+                        os.path.join(
+                            os.path.dirname(__file__), "./data/image/beach.jpeg"
+                        ),
+                        "facebook/musicgen-melody-large",
+                        30,
+                        os.path.join(
+                            os.path.dirname(__file__), "./data/audio/Suri's Improv.mp3"
+                        ),
+                    ],
+                    [
+                        os.path.join(
+                            os.path.dirname(__file__), "./data/image/cat.jpeg"
+                        ),
+                        "facebook/musicgen-large",
+                        30,
+                        None,
+                    ],
+                ],
+                inputs=[image_input, model_path3, duration3, melody3],
+            )
 
     demo.queue().launch(share=share)
 
