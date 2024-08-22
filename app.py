@@ -213,8 +213,8 @@ def UI(share=False):
                         with gr.Accordion("Model Generation Configs"):
                             if "magnet" in model_path:
                                 with gr.Row():
-                                    top_k = gr.Number(label="Top-k", value=0, interactive=True)
-                                    top_p = gr.Number(label="Top-p", value=0.95, interactive=True)
+                                    top_k = gr.Number(label="Top-k", value=300, interactive=True)
+                                    top_p = gr.Number(label="Top-p", value=0, interactive=True)
                                     temperature = gr.Number(
                                         label="Temperature", value=1.0, interactive=True
                                     )
@@ -226,13 +226,13 @@ def UI(share=False):
                                 with gr.Row():
                                     duration = gr.Slider(
                                         minimum=10,
-                                        maximum=60,
-                                        value=10,
+                                        maximum=30,
+                                        value=30,
                                         label="Duration",
                                         interactive=True,
                                     )
                                     use_sampling = gr.Checkbox(label="Use Sampling", interactive=True, value=True)
-                                    top_k = gr.Number(label="Top-k", value=0, interactive=True)
+                                    top_k = gr.Number(label="Top-k", value=300, interactive=True)
                                     top_p = gr.Number(label="Top-p", value=0, interactive=True)
                                     temperature = gr.Number(
                                         label="Temperature", value=1.0, interactive=True
@@ -308,7 +308,6 @@ def UI(share=False):
                     )
                 with gr.Row():
                     config_output_textbox2 = gr.Textbox(
-                        value = '{"duration": 10, "use_sampling": True, "top_k": 1, "top_p": 0, "temperature": 10}',
                         label="Model Configs", 
                         visible=True)
                     with gr.Row():
@@ -316,10 +315,8 @@ def UI(share=False):
                         num_outputs2 = gr.Number(1, label="Number of outputs", interactive=True)
 
                     @gr.on(inputs=[duration2], outputs=config_output_textbox2)
-                    def return_model_configs(duration):
-                        if duration is None:
-                            duration = 10
-                        return {"duration": duration, "use_sampling": True, "top_k": 1, "top_p": 0, "temperature": 10}
+                    def return_model_configs2(duration):
+                        return {"duration": duration, "use_sampling": True, "top_k": 300, "top_p": 0, "temperature": 1}
                     submit2 = gr.Button("Generate Music")
                     result_text2 = gr.Textbox(label="Generated Music (melody)", type="text", interactive=False, visible=True)
                     submit2.click(
@@ -365,7 +362,7 @@ def UI(share=False):
                 submit3 = gr.Button("Generate Music")
                 result_text3 = gr.Textbox(label="Generated Music (image)", type="text", interactive=False, visible=True)
                 def predict_image_music(model_path3, image_caption, duration3, melody3):
-                    model_configs = {"duration": duration3, "use_sampling": False, "top_k": 1, "top_p": 0, "temperature": 10}
+                    model_configs = {"duration": duration3, "use_sampling": True, "top_k": 300, "top_p": 0, "temperature": 1}
                     return predict(
                         model_version = model_path3, 
                         generation_configs = model_configs, 
