@@ -5,9 +5,10 @@ MagicMusicMachine is a demonstration of multimodal music generation technology. 
 
 - **Text-to-Music Generation:** Powered by [AudioCraft](https://github.com/facebookresearch/audiocraft) from Meta, this 
   transformer-based model generates music from text prompts.
+- **Music Continuation:** Powered by [MusicGen](https://github.com/facebookresearch/audiocraft/blob/main/model_cards/MUSICGEN_MODEL_CARD.md) from Meta. 
 - **Image-to-Text Conversion:** Converts images into descriptive text suitable for 
-  music generation. Powered by image [Claude 3](https://www.anthropic.com/api) from Anthropic AI.
-- **Music Transcription:** Translates generated music audio clips into sheet music 
+  music generation. Powered by Vision API from [ChatGPT 4](https://platform.openai.com/docs/guides/vision) from OpenAI.
+- **Music Transcription:** Transcribed generated music audio clips into Midi file  
   for musicians. Powered by Spotify [Basic-Pitch](https://github.com/spotify/basic-pitch).
 
 Additionally, this app is hosted on Hugging Face Spaces, allowing users to easily interact with the model online.
@@ -71,33 +72,38 @@ cloning to your space and using an A100 GPU instance is recommended.
 ### Examples
 1. Text-to-Music 
 
-select `customize the prompt` and use `optimize the prompt` to improve your text input
-![alt text](data/readmedata/text-to-music.png)
+Select your model available for text to music generation. After typing your prompts, you can selecet the music style or change the generation configurations such as temprature, sampling methods. 
+![alt text](data/readmedata/text-to-music.gif)
+
+2. Music Continuation
+
+As a piano perfomer, I don't have the knowledge to compose or improvise a structure piece of music. Therefore, the music continuation is a dream for musician like me, who can complete your input audio or motif. 
+
+
+![alt text](data/readmedata/melody_continuation_recording.gif)
+
+My improvisation recording: 
+
+Output result
 
 
 
-3. Text to Music conditioning on audio input
+3. Image to Music
 
-You could generate the music by providing both text prompt and melodies, the model 
-will generate the music based on your text and audio style.
-![alt text](data/readmedata/text-to-music-condition-music.png)
+Magic muisc machine allows you to generate music based on image input. It utilized ChatGPT to describe the image and generate the text prompt to MusicGen. You can provide the melody as music conditioning, so the output music will based on your melody prompt. 
 
+Besides generating music, AudioCraft also provides model to generate the sound effects. 
 
-4. Image to Music
+![alt text](data/readmedata/image-to-music-recording.gif)
 
-Providing the image and click `submit`. You should wait for the button `generate music` to be enabled. 
-Then you could click the button to generate the music based on the image.
-![alt text](data/readmedata/image-to-music.png)
+4. Audio Transcription 
 
-5. Image to Music conditioning on audio input
+Magic Muisc Machine is designed to allow musician, music learner, performer be able to play the music generated or co-created by machine. Therefore, lastly I used Basic Pitch from Spotify to transcribe the audio to midi, which can be rendered as score using scoring software like Muscore. 
 
-You could also provide both image and audio input to generate the music based on the image and audio style.
-![alt text](data/readmedata/image-to-music-melody-condition.png)
+![alt text](data/readmedata/audio-transcription.gif)
 
-6. Generate audio effect
+Generated Music:
 
-To generate audio effect, please use the `AudioGen` model.
-![alt text](data/readmedata/audio-sound-generation.png)
-
-
+Music Piano Score:
+![alt text](data/readmedata/image-to-music-score.png)
 

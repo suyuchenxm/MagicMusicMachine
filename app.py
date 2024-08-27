@@ -187,8 +187,8 @@ def UI(share=False):
         with gr.Tab("Generate Music by melody"):
             with gr.Column():
                 with gr.Row():
-                    radio_melody_condition = gr.Radio(["Muisc Continuation", "Music Conditioning"], value=None)
-                    model_path2 = gr.Dropdown()
+                    radio_melody_condition = gr.Radio(["Muisc Continuation", "Music Conditioning"], value=None, label="Select the condition")
+                    model_path2 = gr.Dropdown(label="model")
                     @gr.on(inputs=radio_melody_condition, outputs=model_path2)
                     def model_selection(radio_melody_condition):
                         if radio_melody_condition == "Muisc Continuation":
@@ -296,11 +296,11 @@ def UI(share=False):
                     label="Select the model",
                     value="facebook/musicgen-large",
                 )
-                duration3 = gr.Number(30, visible=False)
+                duration3 = gr.Number(30, visible=False, label="Duration")
                 submit3 = gr.Button("Generate Music")
                 result_text3 = gr.Textbox(label="Generated Music (image)", type="text", interactive=False, visible=True)
                 def predict_image_music(model_path3, image_caption, duration3, melody3):
-                    model_configs = {"duration": duration3, "use_sampling": True, "top_k": 300, "top_p": 0, "temperature": 1}
+                    model_configs = {"duration": duration3, "use_sampling": True, "top_k": 250, "top_p": 0, "temperature": 1}
                     return predict(
                         model_version = model_path3, 
                         generation_configs = model_configs, 
