@@ -73,6 +73,7 @@ cloning to your space and using an A100 GPU instance is recommended.
 1. Text-to-Music 
 
 Select a model for text-to-music generation. After entering your prompts, you can choose the music style or adjust the generation settings, such as temperature and sampling methods.
+
 ![alt text](data/readmedata/text-to-music.gif)
 
 2. Music Continuation
@@ -117,5 +118,7 @@ https://github.com/user-attachments/assets/79a4f8c2-11ee-434c-8f37-ddcb4317bf91
 
 
 Music Piano Score:
+
+
 ![alt text](data/readmedata/image-to-music-score.png)
 
